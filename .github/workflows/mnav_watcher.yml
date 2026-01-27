@@ -1,0 +1,33 @@
+name: mNAV Watcher Parallel Scraper
+
+on:
+  schedule:
+    - cron: '*/5 * * * *' # 5분마다 실행 (60초 단위는 깃허브 액션 제한이 있어 5분 권장)
+  workflow_dispatch:      # 수동으로 실행하고 싶을 때 사용
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # 6개 회사의 티커(파일명의 끝부분)를 정의합니다.
+        company: [mstr, mtpl, ddc, empd, naka, asst]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          pip install firebase-admin selenium webdriver-manager
+
+      - name: Run Scraper
+        env:
+          # 여기서 아까 설정한 금고(Secret)를 파이썬으로 넘겨줍니다.
+          FIREBASE_KEY: ${{ secrets.FIREBASE_KEY }}
+        run: python scraper_${{ matrix.company }}.py
