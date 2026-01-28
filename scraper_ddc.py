@@ -2,7 +2,6 @@ import json
 import time
 import re
 import os
-from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, db
 from selenium import webdriver
@@ -22,74 +21,78 @@ try:
             cred = credentials.Certificate(key_dict)
         else:
             cred = credentials.Certificate("serviceAccountKey.json")
-
-        firebase_admin.initialize_app(cred, {
-            'databaseURL': 'https://mnav-watcher-default-rtdb.firebaseio.com/'
-        })
+        firebase_admin.initialize_app(cred, {'databaseURL': 'https://mnav-watcher-default-rtdb.firebaseio.com/'})
 except Exception as e:
     print(f"❌ Firebase 초기화 실패: {e}"); exit()
 
-def clean_num_last(text):
-    """문자열에 숫자가 여러 개일 경우 가장 마지막 숫자만 추출 (DDC 주가용)"""
+def get_nth_number(text, n):
+    """문자열에서 n번째 숫자 덩어리를 추출 (1부터 시작)"""
     if not text: return 0
-    # 모든 숫자(소수점 포함) 추출 후 마지막 것 선택
     nums = re.findall(r'\d+\.\d+|\d+', str(text).replace(',', ''))
     try:
-        return float(nums[-1]) if nums else 0
-    except: return 0
-
-def clean_num(text):
-    """일반적인 숫자 추출"""
-    if not text: return 0
-    cleaned = re.sub(r'[^\d.]', '', str(text).split('\n')[0])
-    try:
-        return float(cleaned) if '.' in cleaned else int(cleaned)
+        return float(nums[n-1]) if len(nums) >= n else 0
     except: return 0
 
 def run_ddc_engine():
+    # 🎯 DDC 트레저리 차트 페이지
     url = "https://treasury.ddc.xyz/?tab=charts"
     
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
+    # 깃허브 액션 환경에서 번호 밀림 방지를 위해 창 크기 고정
+    chrome_options.add_argument("window-size=1920,1080")
     chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
 
     try:
-        print(f"🌐 DDC(ddc) 수집 시작...")
+        print(f"🌐 DDC(ddc) 확정 번호 수집 시작...")
         driver.get(url)
         
-        # 대시보드 로딩 대기
-        time.sleep(5) 
+        # 대시보드 및 iframe 로딩 대기 (넉넉하게 10초)
+        time.sleep(10) 
 
+        all_texts = []
+        # 메인 페이지 텍스트 수집
         elements = driver.find_elements(By.CSS_SELECTOR, "h1, h2, h3, h4, p, span, div")
-        all_content = [el.text.strip() for el in elements if el.text.strip()]
+        all_texts.extend([el.text.strip() for el in elements if el.text.strip()])
+
+        # iframe 내부 텍스트까지 샅샅이 수집
+        iframes = driver.find_elements(By.TAG_NAME, "iframe")
+        for iframe in iframes:
+            try:
+                driver.switch_to.frame(iframe)
+                time.sleep(3)
+                inner_elements = driver.find_elements(By.CSS_SELECTOR, "h1, h2, h3, h4, p, span, div")
+                all_texts.extend([el.text.strip() for el in inner_elements if el.text.strip()])
+                driver.switch_to.default_content()
+            except:
+                driver.switch_to.default_content(); continue
 
         def get_by_key(idx_num):
-            try:
-                return all_content[idx_num - 1]
+            try: return all_texts[idx_num - 1]
             except: return ""
 
-        # --- [데이터 추출] ---
-        # 90번에서 마지막 숫자인 2.88 추출 (주가)
-        ddc_price = clean_num_last(get_by_key(90))
-        # 147번에서 mNAV 추출
-        ddc_mnav = clean_num(get_by_key(147))
+        # --- [데이터 추출 - ASST와 동일한 포맷] ---
+        # 123번 인덱스의 두 번째 숫자 (주가)
+        ddc_price = get_nth_number(get_by_key(123), 2)
+        # 178번 인덱스의 첫 번째 숫자 (mNAV)
+        ddc_mnav = get_nth_number(get_by_key(178), 1)
 
-        # 사장님 웹사이트 인자 명칭: "ddc price", "ddc mnav"
+        # 사장님 웹사이트 인자 명칭 그대로 유지
         update_data = {
             "ddc price": ddc_price,
             "ddc mnav": ddc_mnav
         }
 
-        # 데이터 검증 후 전송
+        # 데이터 검증 후 Firebase 전송
         if ddc_price > 0:
             db.reference('/params').update(update_data)
             print(f"✅ DDC 업데이트 완료: {ddc_price}$ / {ddc_mnav}x")
         else:
-            print("🚨 데이터를 찾지 못했습니다. 번호가 바뀌었는지 확인이 필요합니다.")
+            print(f"🚨 데이터 추출 실패 (123번: {get_by_key(123)}, 178번: {get_by_key(178)})")
 
     except Exception as e:
         print(f"❌ 오류 발생: {e}")

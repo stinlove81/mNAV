@@ -47,7 +47,7 @@ def run_asst_engine():
     try:
         print(f"🌐 ASST(asst) 확정 번호 수집 시작...")
         driver.get(url)
-        time.sleep(30) # 대시보드 로딩 대기
+        time.sleep(10) # 대시보드 로딩 대기
 
         all_texts = []
         elements = driver.find_elements(By.CSS_SELECTOR, "h1, h2, h3, h4, p, span, div")
