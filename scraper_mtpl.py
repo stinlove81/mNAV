@@ -26,6 +26,7 @@ except Exception as e:
     print(f"❌ Firebase 초기화 실패: {e}"); exit()
 
 def clean_num(text):
+    """문자열에서 숫자와 소수점만 추출하여 숫자로 변환"""
     if not text: return 0
     cleaned = re.sub(r'[^\d.]', '', str(text).split('\n')[0])
     try:
@@ -33,7 +34,9 @@ def clean_num(text):
     except: return 0
 
 def run_mtpl_engine():
+    # 🎯 메타플래닛 분석 페이지
     url = "https://metaplanet.jp/jp/analytics"
+    
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
@@ -44,45 +47,37 @@ def run_mtpl_engine():
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
 
     try:
-        print(f"🌐 메타플래닛(mtpl) mNAV 타겟 수색 시작...")
+        print(f"🌐 메타플래닛(3350) 확정 번호 수집 시작...")
         driver.get(url)
-        time.sleep(25) # 메타플래닛 사이트 특성상 충분히 대기
+        
+        # 데이터 렌더링을 위해 25초 충분히 대기
+        time.sleep(25) 
 
         elements = driver.find_elements(By.CSS_SELECTOR, "h1, h2, h3, h4, p, span, div")
         all_content = [el.text.strip() for el in elements if el.text.strip()]
-
-        # --- [🔎 210번 주변 집중 디버깅 출력] ---
-        print("\n" + "🔍"*20)
-        print("🚩 [mNAV 수색] 210번 인덱스 기준 위아래 50개 리스트")
-        
-        target = 210
-        start = max(1, target - 50)
-        end = min(len(all_content), target + 50)
-        
-        for i in range(start, end + 1):
-            marker = " ⭐ [현재 210번 설정 위치]" if i == target else ""
-            print(f"  [{i}] {all_content[i-1]}{marker}")
-        
-        print("🔍"*20 + "\n")
 
         def get_by_key(idx_num):
             try: return all_content[idx_num - 1]
             except: return "0"
 
-        # 주가는 기존 27번 그대로!
+        # --- [데이터 추출 - 사장님 확정 번호] ---
+        # 27번: 주가(Price)
         price_raw = clean_num(get_by_key(27))
-        # mNAV는 일단 210번으로 시도 (로그 보고 수정 예정)
-        mtpl_mnav = clean_num(get_by_key(210))
+        # 217번: mNAV (확정된 위치)
+        mtpl_mnav = clean_num(get_by_key(217))
 
+        # 사장님 웹사이트 인자 명칭에 맞게 매핑
+        update_data = {
+            "3350 price": price_raw,
+            "3350 mnav": mtpl_mnav,
+        }
+
+        # 데이터 검증 후 Firebase 전송
         if price_raw > 0:
-            db.reference('/params').update({
-                "3350 price": price_raw,
-                "3350 mnav": mtpl_mnav,
-            })
-            print(f"✅ 주가(27번) 수집 성공: {price_raw}¥")
-            print(f"✅ mNAV(현재 210번) 시도 수치: {mtpl_mnav}x")
+            db.reference('/params').update(update_data)
+            print(f"✅ MTPL 업데이트 완료: {price_raw}¥ / {mtpl_mnav}x")
         else:
-            print("🚨 주가(27번)를 찾지 못했습니다. 번호가 전체적으로 밀렸는지 확인 필요.")
+            print(f"🚨 데이터 수집 실패 (27번: {get_by_key(27)}, 217번: {get_by_key(217)})")
 
     except Exception as e:
         print(f"❌ 오류 발생: {e}")
