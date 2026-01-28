@@ -76,7 +76,7 @@ def run_engine():
         update_data = {
             "mstr price": mstr_price,
             "mstr mnav": mstr_mnav,
-            "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            "last_updated": datetime.now().strftime("%b %d, %Y, %H:%M UTC")
         }
 
         # 데이터 검증 (가격이 0이면 문제 있는 것으로 간주)
