@@ -2,7 +2,6 @@ import json
 import time
 import re
 import os
-from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, db
 from selenium import webdriver
@@ -26,16 +25,12 @@ try:
 except Exception as e:
     print(f"❌ Firebase 초기화 실패: {e}"); exit()
 
-def clean_num_last(text):
+def get_nth_number(text, n):
+    """문자열에서 n번째 숫자 덩어리를 추출 (1부터 시작)"""
     if not text: return 0
     nums = re.findall(r'\d+\.\d+|\d+', str(text).replace(',', ''))
-    try: return float(nums[-1]) if nums else 0
-    except: return 0
-
-def clean_num(text):
-    if not text: return 0
-    cleaned = re.sub(r'[^\d.]', '', str(text).split('\n')[0])
-    try: return float(cleaned) if '.' in cleaned else int(cleaned)
+    try:
+        return float(nums[n-1]) if len(nums) >= n else 0
     except: return 0
 
 def run_asst_engine():
@@ -50,9 +45,9 @@ def run_asst_engine():
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
 
     try:
-        print(f"🌐 ASST(asst) 광범위 디버깅 시작...")
+        print(f"🌐 ASST(asst) 확정 번호 수집 시작...")
         driver.get(url)
-        time.sleep(35) # 로딩 시간 더 넉넉히
+        time.sleep(30) # 대시보드 로딩 대기
 
         all_texts = []
         elements = driver.find_elements(By.CSS_SELECTOR, "h1, h2, h3, h4, p, span, div")
@@ -62,42 +57,31 @@ def run_asst_engine():
         for iframe in iframes:
             try:
                 driver.switch_to.frame(iframe)
-                time.sleep(5)
+                time.sleep(3)
                 inner_elements = driver.find_elements(By.CSS_SELECTOR, "h1, h2, h3, h4, p, span, div")
                 all_texts.extend([el.text.strip() for el in inner_elements if el.text.strip()])
                 driver.switch_to.default_content()
             except:
                 driver.switch_to.default_content(); continue
 
-        # --- [🔎 초광범위 디버깅 출력부] ---
-        print("\n" + "🚨"*20)
-        print("🚩 [초광범위 디버그] ASST 데이터 투망 감시 (위아래 30개)")
-        
-        # 84번과 148번 주변을 훑습니다.
-        scan_targets = [84, 148]
-        for target in scan_targets:
-            print(f"\n🎯 {target}번 인덱스 기준 위아래 30개 탐색:")
-            start = max(1, target - 30)
-            end = min(len(all_texts), target + 30)
-            for i in range(start, end + 1):
-                marker = " <--- ★ 현재 타겟 설정 위치" if i == target else ""
-                print(f"  [{i}] {all_texts[i-1]}{marker}")
-        
-        print("\n" + "🚨"*20 + "\n")
-
         def get_by_key(idx_num):
             try: return all_texts[idx_num - 1]
             except: return ""
 
-        # 우선 기존 번호대로 시도는 해봅니다.
-        asst_price = clean_num_last(get_by_key(84))
-        asst_mnav = clean_num(get_by_key(148))
+        # --- [데이터 추출 - 사장님 확정 번호] ---
+        # 123번의 두 번째 숫자 (주가)
+        asst_price = get_nth_number(get_by_key(123), 2)
+        # 178번의 첫 번째 숫자 (mNAV)
+        asst_mnav = get_nth_number(get_by_key(178), 1)
 
         if asst_price > 0:
-            db.reference('/params').update({"asst price": asst_price, "asst mnav": asst_mnav})
-            print(f"✅ 일단 업데이트 시도 완료: {asst_price}$ / {asst_mnav}x")
+            db.reference('/params').update({
+                "asst price": asst_price,
+                "asst mnav": asst_mnav
+            })
+            print(f"✅ ASST 업데이트 완료: {asst_price}$ / {asst_mnav}x")
         else:
-            print("🚨 현재 설정된 84번에서 숫자를 못 찾았습니다. 위 로그에서 정답 번호를 찾으세요!")
+            print(f"🚨 데이터 추출 실패 (123번: {get_by_key(123)}, 178번: {get_by_key(178)})")
 
     except Exception as e:
         print(f"❌ 오류 발생: {e}")
