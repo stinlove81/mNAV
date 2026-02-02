@@ -50,8 +50,8 @@ def run_mtpl_engine():
         print(f"🌐 메타플래닛(3350) 확정 번호 수집 시작...")
         driver.get(url)
         
-        # 데이터 렌더링을 위해 25초 충분히 대기
-        time.sleep(25) 
+        # 데이터 렌더링을 위해 60초 충분히 대기
+        time.sleep(60) 
 
         elements = driver.find_elements(By.CSS_SELECTOR, "h1, h2, h3, h4, p, span, div")
         all_content = [el.text.strip() for el in elements if el.text.strip()]
